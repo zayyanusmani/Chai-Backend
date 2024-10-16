@@ -16,4 +16,19 @@ app.use(express.urlencoded({extended: true, limit: "16kb"}))
 app.use(express.static("public"))
 
 
-export { app}
+// routes import
+
+import userRouter from "./routes/user.routes.js"
+
+// routes declaration
+
+// q k cheezen separate krdi hain tou ab router ko laney
+// k liye middleware laney prega that's why using
+// app.use() instead of app.get()
+
+app.use("/api/v1/users", userRouter)
+
+// http://localhost:8000/api/v1/users/register
+
+export { app }
+

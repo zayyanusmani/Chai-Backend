@@ -11,6 +11,9 @@ const asyncHandler = (requestHandler) => {
     }
 }
 
+export {asyncHandler}
+
+
 
 // const asynchander = () => {}  
 // const asynchander = (func) => () => {}  
@@ -30,4 +33,3 @@ const asyncHandler = (requestHandler) => {
 
 
 
-export {asyncHandler}
