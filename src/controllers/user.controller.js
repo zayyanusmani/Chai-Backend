@@ -15,17 +15,26 @@ const registerUser = asyncHandler( async (req,res) => {
     // check for user creation
     // return res
 
-    const {fullname, email, username, password } = req.body
+    const {fullName, email, username, password } = req.body
     console.log("email: ", email);
 
+
+    // Following if condition checks if any of the fields (fullName, email, username, or password) 
+    // are either empty or consist of only whitespace. It uses .some() to evaluate each field, 
+    // trimming whitespace and comparing it to an empty string. If any field is empty, 
+    // the condition returns true.
     if ( 
-        [fullname, email, username, password].some((field) =>
+        [fullName, email, username, password].some((field) =>
         field?.trim() === "")
         ){
             throw new ApiError(400, "All fields are required")
         }
 
-        User.findOne({
+
+        //Following query searches for a user in the database where 
+        // either the username or the email matches the provided 
+        // values. It uses the $or operator to check both fields simultaneously.
+        const existedUser = await User.findOne({
             $or: [{username}, {email}]
         })
 
@@ -35,10 +44,17 @@ const registerUser = asyncHandler( async (req,res) => {
 
 
         const avatarLocalPath = req.files?.avatar[0]?.path;
-        const coverImageLocalPath = req.files?.coverImage[0]?.path;
+        // const coverImageLocalPath = req.files?.coverImage[0]?.path;
+
+        let coverImageLocalPath;
+        if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
+            coverImageLocalPath = req.files.coverImage[0].path
+        }
 
         // yha hm check kr rhey hn k images upload to krli hain multer sey
         // pr check kr rhey hn k aya bhi h ya nhi
+
+        // coverImage check nhi ki q k its not compulsary to add
 
         if(!avatarLocalPath) {
             throw new ApiError(400, "Avatar file is required");
@@ -54,8 +70,10 @@ const registerUser = asyncHandler( async (req,res) => {
             throw new ApiError(400, "Avatar file is required");
         }
 
+
+        // User is being used to talk to the db
         const user = await User.create({
-            fullname,
+            fullName,
             avatar: avatar.url,
             coverImage: coverImage?.url || "",
             email,
@@ -70,7 +88,7 @@ const registerUser = asyncHandler( async (req,res) => {
         )
 
         if (!createdUser) {
-            throw new ApiError(500, "Something went wront while registering the user")
+            throw new ApiError(500, "Something went wrong while registering the user")
         }
 
         return res.status(201).json(
