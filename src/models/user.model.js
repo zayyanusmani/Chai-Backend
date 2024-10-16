@@ -54,7 +54,7 @@ userSchema.pre("save", async function (next) {
         return next();
     }
 
-    this.password = bcrypt.hash(this.password,10) // 10 is the number of rounds of encryption algorithm
+    this.password = await bcrypt.hash(this.password,10) // 10 is the number of rounds of encryption algorithm
     next();
 }) 
 
