@@ -3,6 +3,24 @@ import{ ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import jwt from "jsonwebtoken"
+
+
+const generateAccessAndRefreshTokens =  async(userId) => {
+    try{
+        const user = await User.findById(userId)
+        const accessToken = user.generateAccessToken()
+        const refreshToken = user.generateRefreshToken()
+
+        user.refreshToken = refreshToken
+        await user.save({validateBeforeSave: false})
+        return {accessToken, refreshToken}
+
+    } catch(error){ 
+        throw new ApiError(500, "Something went wrong while generating refresh and access tokens!")
+    }
+
+}
 
 const registerUser = asyncHandler( async (req,res) => {
     // get user details from frontend
@@ -97,4 +115,178 @@ const registerUser = asyncHandler( async (req,res) => {
 
 })
 
-export { registerUser }
+const loginUser = asyncHandler( async (req, res) => {
+    // req body => data
+    // username or email
+    // find the user
+    // password check
+    // generate access and refresh tokens
+    // send cookie
+
+    const {email, username, password } = req.body;
+
+    if(!username && !email){
+        throw new ApiError(400, "username or email is required")
+    }
+
+    const user = await User.findOne({
+        $or: [{username}, {email}]
+    })
+
+    if (!user) {
+        throw new ApiError(404, "User not found")
+    }
+
+                                // idhe user tmhara variable hai aur User with a capital U 
+                                // mongoDB wala variable hai. both are diff
+    const isPasswordCorrect = await user.isPasswordCorrect(password)
+
+    if (!isPasswordCorrect) {    
+        throw new ApiError(401, "Invalid credentials")
+    }
+
+    const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id);
+
+    const loggedInUser = await User.findById(user._id).select(
+        "-password -refreshToken"
+    );
+   
+    // cookies k liye kuch options set krney prtey hn
+    // cookies ko by default koi bhi modify kr skta hai front end pey
+    // pr jb aap httpOnly: true aur secure: true
+    // krdetey ho tou wo srf server sey modify ho skti hai
+
+    const options = {
+        httpsOnly: true,
+        secure: true
+    }
+
+    // ab sawal ye h k jb accessToken aur refreshToken bhej diye
+    // tou phr json object me alag sey q bhej rhey hn?
+    // answer is, yha hm wo case access kr rhey hn jab user 
+    // khud save krna chah rha ho in local storage ya wo mobile
+    // app bana rha ho wha chahye ho...
+    return res
+    .status(200)
+    .cookie("accessToken", accessToken, options)
+    .cookie("refreshToken", refreshToken, options)
+    .json(
+        new ApiResponse(
+            200,
+            {
+                user: loggedInUser, accessToken, refreshToken
+            },
+            "User logged In Succesfully"
+        )
+
+    )
+})
+
+// logout krtey time sbsey phley aap cookies delete krtey hn
+// us k baad refresh tokens ko reset
+const logoutUser = asyncHandler( async (req, res) => {
+   
+    // auth ka middleware phley verify krega k user h ya nhi
+
+     await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set:{
+                refreshToken: undefined
+            }
+        },
+        {
+                new: true
+            
+        } 
+        )
+
+        const options =  {
+            httpsOnly: true,
+            secure: true
+        }
+
+        return res
+        .status(200)
+        .clearCookie("accessToken", options)
+        .clearCookie("refreshToken", options)
+        .json(
+            new ApiResponse(
+                200,
+                {},
+                "User logged Out Succesfully"
+            )
+        )
+   
+   
+    // User.findByIdAndUpdate(
+    //     req.user._id,
+    //     {
+    //         refreshToken: ""
+    //     },
+    //     {
+    //         new: true
+    //     }
+    // )
+    // return res.status(200).json(
+    //     new ApiResponse(200, null, "User logged Out Succesfully")
+    // )
+})
+
+const refreshAccessToken = asyncHandler(async (req, res) =>
+{
+    const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+
+    // HITESH HAS MADE A MISTAKE HERE, HE DID NOT ADD !
+    if (!incomingRefreshToken){
+        throw new ApiError(401, "unauthorized request")
+    }
+try {
+    
+        // idhr hmney incomingToken ko decodedToken me convert krdia
+        const decodedToken = jwt.verify(
+            incomingRefreshToken,
+            process.env.REFRESH_TOKEN_SECRET
+        )
+    
+        const user = await User.findById(decodedToken?._id)
+    
+        if(!user){
+            throw new ApiError(401, "Invalid refresh token")
+        }
+        
+        // below one to check agr hmara refreshToken expire hgya hai ya invalid hai to
+        if(incomingRefreshToken !== !user?.refreshToken){
+            throw new ApiError(401, "Refresh token is expired or used")
+        }
+    
+        const options = {
+            httpsOnlu: true,
+            secure: true
+        }
+    
+        const {accessToken, newRefreshToken} = await generateAccessAndRefreshTokens(user._id)
+    
+        return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", newRefreshToken, options)
+        .json(
+            new ApiResponse(
+                200,
+                {
+                 accessToken, refreshToken: newRefreshToken
+                },
+                "Access Token Refreshed"
+            )
+        )
+} catch (error) {
+    throw new ApiError(401, error?.message || "Invalid Refresh Token")
+}
+
+})
+
+
+
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken }
