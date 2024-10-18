@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { loginUser, logoutUser, registerUser } from "../controllers/user.controller.js";
+import { getUserChannelProfile, loginUser, logoutUser, registerUser } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { refreshAccessToken } from "../controllers/user.controller.js";
@@ -27,8 +27,20 @@ router.route("/register").post(
 router.route("/login").post(loginUser)
 
 
-// secured routes
+// secured routes     // verifyJWT un routes p bhej hey hn jin k liye users ka login hna zaruri h
 router.route("/logout").post(verifyJWT, logoutUser)
 router.route("/refresh-token").post(refreshAccessToken)
+router.route("/change-password").post(verifyJWT, changeCurrentPassword)
+router.route("/current-user").get(verifyJWT, getCurrentUser)
+router.route("/update-account").patch(verifyJWT, updateAccountDetails) // idhr post nhi patch rkhengey wrna sari details update hjayengi
+
+// idhr phley verifyJWT ka middleware ayega phr multer ka ayega q k yha file bhi reeive ho rhi hgi
+// ye upload directly nhi hga, multiple methods sey arrays wghera, hmey chahye ek file. isi liye whan files nhi file tha
+router.route("/avatar").patch(verifyJWT, upload.single("avatar"), updateUserAvatar)
+router.route("/coverImage").patch(verifyJWT, upload.single("coverImage"),updateUserCoverImage)
+
+// params lkhney k liye
+router.route("/c/:username").get(verifyJWT, getUserChannelProfile)
+router.route("/history").get(verifyJWT, getUserHistory)
 
 export default router;

@@ -261,7 +261,7 @@ try {
         }
     
         const options = {
-            httpsOnlu: true,
+            httpsOnly: true,
             secure: true
         }
     
@@ -314,8 +314,12 @@ const getCurrentUser = asyncHandler( async(req, res) => {
     // const user = await User.findById(req.user._id) // this line by Supermaven only
     return res
     .status(200)
-    .json(200, req.user, "Current User fetched successfully"
-    )
+    .json(
+        new ApiResponse(
+            200,
+            {}, 
+        "Current User fetched successfully"
+         ) )
 })
 
 const updateAccountDetails = asyncHandler( async(req, res) => {
@@ -325,7 +329,7 @@ const updateAccountDetails = asyncHandler( async(req, res) => {
         throw new ApiError(400, "Full name and email are required!")
     }
 
-    const user = User.findByIdAndUpdate(
+    const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
             $set: {
@@ -413,8 +417,154 @@ const updateUserCoverImage = asyncHandler( async(req, res) => {
     .json(new ApiResponse(200, user, "Cover Image updated successfully"))
 })
 
+const getUserChannelProfile = asyncHandler( async( res, req) => {
 
-export { registerUser,
+    // params sey islye kr rhey hn q k url sey ayega
+    const {username} = req.params
+
+    if (!username?.trim()){
+        throw new ApiError(400, "Username is required")
+    }
+        const channel = await User.aggregate([
+            {
+                $match: { // match is being used to match the username in db
+                    username: username?.toLowerCase()
+                },
+            },
+            {    // channel k subscriber kitney hn ye dekhney k liye lookup laga rhey hn
+                $lookup: {
+                    from: "subscriptions", // Not Subscription bcs model me sari cheeen lowercase aur plural me convert hjati hn
+                    localField: "_id",
+                    foreignField: "channel",
+                    as: "subscribers"
+                }
+            },
+            { // ab is channel ney ktney channels ko subscribe kia hua h wo nikalney k 
+                // k liye ek aur pipeline aur ismey bhi lookup use krengey
+                $lookup: {
+                    from: "subscriptions", // Not Subscription bcs model me sari cheeen lowercase aur plural me convert hjati hn
+                    localField: "_id",
+                    foreignField: "subscriber",
+                    as: "subscribedTo"
+                }
+            },
+            {   // ye opar wali 2 fileds tou agayi hmarey pas, 
+                // ab hmey inhe add krna prega 
+                
+                //add fields ye krta h k jtni hmarey pas values hn unko rkhta h pr 
+                //  pr additional fields bhi add krdega
+                $addFields: {
+                    subscriberCount: {
+                        $size: "$subscribers" // $size is used to count
+                    },
+                    channelsSubscribedToCount: {
+                        $size: "$subscribedTo"
+                    },
+                    isSubscribed: {
+                        $cond: {
+                            if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                            then: true,
+                            else: false
+                        },
+                    },
+                    
+                }
+            },
+            { // $project is used for Reshapes each document by including or excluding fields,
+                //  as well as adding computed fields.
+                $project: {
+                    fullName: 1,
+                    username: 1,
+                    avatar: 1,
+                    subscriberCount: 1,
+                    channelsSubscribedToCount: 1,
+                    isSubscribed: 1,
+                    coverImage: 1,
+                    email: 1
+
+                }
+            }
+    
+    ])
+
+    // checking if channel does no exist
+    if(!channel?.length){
+        throw new ApiError(404, "Channel not found")
+    }
+
+    return res
+    .status(200)
+    .json(new ApiResponse(200, channel[0], "Channel found successfully"))
+
+    // hmey watch history nikalney me nested lookup use krna prega 
+    // watch history ki array me video ids hngi ussey hm video sey
+    // documents nikal lengey ab un documents ka owner hm nikalengey
+    // user waley table sey lookup nested kr k 
+
+
+})
+
+const getWatchHistory = asyncHandler( async(req,res) => {
+   
+   
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id)
+            }
+        },
+        { // idhr watchhistory me sub/nested pipeline lgayengey
+            // taa k owners access kr sken
+            $lookup:{
+            from: "videos",
+            localField: "watchHistory",
+            foreignField: "_id",
+            as: "watchHistory",
+            pipeline: [ //owners ka hmey sara data nhi chahye tou isliye 
+                        // ek aur nested pipeline me project use kr k required ley rhey hn
+                    {
+                    $lookup: {
+                        from: "users",
+                        localField: "owner",
+                        foreignField: "_id",
+                        as: "owner,",
+                        pipeline: [
+                            {
+                            $project: {
+                                fullName: 1,
+                                username: 1,
+                                avatar: 1
+                            }
+                        }
+                        ]
+                    }
+                    }, // ab ye neechey wali pipeline optional hai
+                    //  ye srf frontend ki sahulat k liye hai k usko 
+                    // loop laga k at first index p data nikalney k bjaye
+                    // direct mil jaye
+                    {
+                        // hmara data opar owner me save hau wa hai
+                        // pr yaha bhi hmney field add me dbara owner
+                        //  lelia taa k field overwrite hjaye
+                        $addFields: {
+                            owner: {
+                                $first: "$owner" // field me sey nikalney k liye $ with owner
+                            }
+                        }
+                    }
+            ]
+            }
+        }
+    ])
+
+    return res.status(200)
+    .json(                    // idhr poora user bhi bhej sktey they pr jo FE dev usmey sey watchhistory nikalleta, pr jb watch history mangi h srf to [0]
+        new ApiResponse(200, user[0].watchHistory, "Watch history found successfully")
+    )
+
+})
+
+  export { registerUser,
         loginUser, 
         logoutUser, 
         refreshAccessToken, 
@@ -422,5 +572,7 @@ export { registerUser,
         getCurrentUser, 
         updateAccountDetails,
         updateUserAvatar,
-        updateUserCoverImage
+        updateUserCoverImage,
+        getUserChannelProfile,
+        getWatchHistory
 }
